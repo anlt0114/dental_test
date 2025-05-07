@@ -1,52 +1,75 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import Slider from "@mui/material/Slider";
+import Box from "@mui/material/Box";
+import IconButton from "@mui/material/IconButton";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
+import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
+import SkipNextIcon from "@mui/icons-material/SkipNext";
 
-interface AudioPlayerProps {
-  totalStep: number;
+interface TimeSliderProps {
+  maxStep: number;
 }
+// Constants
+const STEP_INTERVAL = 1; // Interval between tick marks on slider
+const MARK_INTERVAL = 5; // Interval between labeled tick marks
+const MS_PER_STEP = 200; // Milliseconds per step (lower = faster animation)
+const SLIDE_STEP = 0.1;
+const TimeSlider: React.FC<TimeSliderProps> = ({ maxStep }) => {
+  // Ensure maxStep is valid and has a minimum value of 1
+  const effectiveMaxStep = Math.max(maxStep || 1, 1);
 
-const AudioPlayer = ({ totalStep }: AudioPlayerProps) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(totalStep);
+  // State management
+  const [duration, setDuration] = useState(effectiveMaxStep);
   const [currentTime, setCurrentTime] = useState(0);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  const audioRef = useRef(null);
-  const progressBarRef = useRef(null);
-  const requestRef = useRef(0);
-  const previousTimeRef = useRef(0);
-  const startTimeRef = useRef(0);
+  // Refs for animation
+  const requestRef = useRef<number>(0);
+  const previousTimeRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(0);
 
-  const animate = (time: any) => {
-    if (!startTimeRef.current) {
-      startTimeRef.current = time;
-      previousTimeRef.current = currentTime;
-    }
+  // Update duration if maxStep changes
+  useEffect(() => {
+    setDuration(Math.max(maxStep || 1, 1));
+    setCurrentTime(0);
+  }, [maxStep]);
 
-    const elapsed = (time - startTimeRef.current) / 1000;
-    const newTime = previousTimeRef.current + elapsed;
+  // Animation handler for smooth time tracking
+  const animate = useCallback(
+    (time: number) => {
+      if (!startTimeRef.current) {
+        startTimeRef.current = time;
+        previousTimeRef.current = currentTime;
+      }
+      // Calculate elapsed time based on MS_PER_STEP
+      const elapsedMs = time - startTimeRef.current;
+      const stepsToAdvance = elapsedMs / MS_PER_STEP;
+      const newTime = previousTimeRef.current + stepsToAdvance * SLIDE_STEP;
 
-    if (newTime >= duration) {
-      setCurrentTime(0);
-      setIsPlaying(false);
-      startTimeRef.current = 0;
-      previousTimeRef.current = 0;
-      return;
-    }
+      if (newTime >= duration) {
+        setCurrentTime(0);
+        setIsPlaying(false);
+        startTimeRef.current = 0;
+        previousTimeRef.current = 0;
+        return;
+      }
 
-    setCurrentTime(newTime);
-    requestRef.current = requestAnimationFrame(animate);
-  };
+      setCurrentTime(newTime);
+      requestRef.current = requestAnimationFrame(animate);
+    },
+    [currentTime, duration]
+  );
 
+  // Handle animation frame requests based on play/pause state
   useEffect(() => {
     if (isPlaying) {
       startTimeRef.current = 0;
       previousTimeRef.current = currentTime;
       requestRef.current = requestAnimationFrame(animate);
-    } else {
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-        requestRef.current = 0;
-      }
+    } else if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+      requestRef.current = 0;
     }
 
     return () => {
@@ -54,35 +77,11 @@ const AudioPlayer = ({ totalStep }: AudioPlayerProps) => {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [isPlaying]);
+  }, [animate, currentTime, isPlaying]);
 
-  // useEffect(() => {
-  //   const audio = audioRef.current as any;
-  //   if (!audio) return;
-
-  //   const setAudioData = () => {
-  //     setDuration(audio.duration || totalStep)
-  //     setIsLoaded(true);
-  //   };
-
-  //   audio.addEventListener("loadeddata", setAudioData);
-
-  //   return () => {
-  //     audio.removeEventListener("loadeddata", setAudioData);
-  //   };
-  // }, []);
-
-  useEffect(() => {
-    const audio = audioRef.current as any;
-    if (!audio || !isLoaded) return;
-
-    if (audio.readyState >= 1 && currentTime <= duration) {
-      audio.currentTime = currentTime;
-    }
-  }, [currentTime, duration, isLoaded]);
-
+  // Event handlers
   const togglePlayPause = () => {
-    setIsPlaying(!isPlaying);
+    setIsPlaying((prev) => !prev);
   };
 
   const skipBackward = () => {
@@ -103,8 +102,8 @@ const AudioPlayer = ({ totalStep }: AudioPlayerProps) => {
     });
   };
 
-  const handleProgressChange = (e: any) => {
-    const newTime = parseFloat(e.target.value);
+  const handleSliderChange = (_event: Event, newValue: number | number[]) => {
+    const newTime = newValue as number;
     setCurrentTime(newTime);
     previousTimeRef.current = newTime;
     startTimeRef.current = 0;
@@ -115,112 +114,129 @@ const AudioPlayer = ({ totalStep }: AudioPlayerProps) => {
     }
   };
 
-  const renderTickMarks = () => {
-    const tickMarks = [];
-    for (let i = 0; i <= duration; i++) {
-      const isMajorTick =
-        i === 0 || i === 5 || i === 10 || i === 15 || i === 17;
-      tickMarks.push(
-        <div
-          key={i}
-          className={`absolute h-full w-px ${
-            isMajorTick ? "bg-gray-400" : "bg-gray-300"
-          }`}
-          style={{ left: `${(i / duration) * 100}%` }}
-        />
-      );
+  // Generate marks for the slider with specified interval
+  const generateMarks = () => {
+    const result = [{ value: 0, label: "0" }];
+    // Add marks at regular intervals
+    for (let i = STEP_INTERVAL; i <= duration; i += STEP_INTERVAL) {
+      result.push({
+        value: i,
+        label:
+          i % MARK_INTERVAL === 0
+            ? i.toString()
+            : i === duration
+            ? i.toString()
+            : "",
+      });
     }
-    return tickMarks;
+    // Always add the max value if it's not already included
+    if (duration % STEP_INTERVAL !== 0) {
+      result.push({ value: duration, label: duration.toString() });
+    }
+
+    return result;
   };
 
+  const marks = generateMarks();
+
   return (
-    <div className="flex flex-col w-full max-w-md bg-gray-100 rounded-lg p-4 shadow-md">
-      <audio ref={audioRef} src="/example-audio.mp3" preload="metadata" />
-
-      <div className="w-full mb-4">
-        <div className="flex justify-between text-xs text-gray-600 mb-1">
+    <Box className="flex flex-col w-full max-w-md bg-gray-100 rounded-lg p-4 shadow-md">
+      <Box className="w-full mb-4">
+        <Box className="flex justify-between text-xs text-gray-600 mb-1">
           <span className="font-medium">U</span>
-          <div className="flex-1 mx-2 flex justify-between">
-            {/* <span>0</span>
-            <span>5</span>
-            <span>10</span>
-            <span>15</span>
-            <span>17</span> */}
-            <h1 className="text-lg">{totalStep}</h1>
-          </div>
-        </div>
+          <Box className="flex-1 mx-2 flex justify-between">
+            <h1 className="text-lg">{maxStep}</h1>
+          </Box>
+        </Box>
 
-        <div className="relative w-full h-8">
-          <div className="absolute inset-0 bg-blue-200 rounded-md"></div>
-
-          <div className="absolute inset-0">{renderTickMarks()}</div>
-
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white border-2 border-blue-600 rounded-full shadow-md cursor-pointer z-20 transition-all duration-300 ease-linear"
-            style={{ left: `calc(${(currentTime / duration) * 100}% - 12px)` }}
-          >
-            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-1 py-0.5 rounded">
-              {currentTime.toFixed(1)}
-            </div>
-          </div>
-
-          <input
-            ref={progressBarRef}
-            type="range"
-            className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-            min="0"
-            max={duration || 0}
-            step="0.1"
+        {/* Material UI Slider */}
+        <Box sx={{ width: "100%", padding: "10px 0" }}>
+          <Slider
             value={currentTime}
-            onChange={handleProgressChange}
-            disabled={!isLoaded}
+            onChange={handleSliderChange}
+            min={0}
+            max={duration}
+            step={SLIDE_STEP}
+            marks={marks}
+            valueLabelDisplay="auto"
+            valueLabelFormat={(value) => value.toFixed(1)}
+            sx={{
+              color: "#3b82f6", // blue-500
+              "& .MuiSlider-thumb": {
+                width: 20,
+                height: 20,
+                backgroundColor: "#fff",
+                border: "2px solid #3b82f6",
+                "&:focus, &:hover, &.Mui-active": {
+                  boxShadow: "0 0 0 8px rgba(59, 130, 246, 0.16)",
+                },
+              },
+              "& .MuiSlider-rail": {
+                backgroundColor: "#bfdbfe", // blue-200
+                height: 8,
+              },
+              "& .MuiSlider-track": {
+                height: 8,
+              },
+            }}
           />
-        </div>
+        </Box>
 
-        <div className="flex justify-between text-xs text-gray-600 mt-1">
+        <Box className="flex justify-between text-xs text-gray-600 mt-1">
           <span className="font-medium">L</span>
-          <div className="flex-1 mx-2">
+          <Box className="flex-1 mx-2">
             <span className="text-red-500 ml-1">1</span>
-          </div>
-        </div>
-      </div>
+          </Box>
+        </Box>
+      </Box>
 
-      <div className="flex items-center justify-start space-x-4">
-        <button
-          className="p-2 bg-gray-200 rounded-full hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors flex items-center justify-center relative w-8 h-8"
+      {/* Control buttons */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          gap: 2,
+        }}
+      >
+        <IconButton
           onClick={skipBackward}
           aria-label="Skip backward"
+          sx={{
+            backgroundColor: "#e5e7eb", // gray-200
+            "&:hover": { backgroundColor: "#d1d5db" }, // gray-300
+            padding: "8px",
+          }}
         >
-          <div className="w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-gray-700 transform -translate-x-1"></div>
-          <div className="absolute left-1/2 top-1/2 transform -translate-y-1/2 h-8 w-px bg-gray-700"></div>
-        </button>
+          <SkipPreviousIcon />
+        </IconButton>
 
-        <button
-          className="p-2 bg-gray-200 rounded-full hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors flex items-center justify-center w-8 h-8"
+        <IconButton
           onClick={togglePlayPause}
           aria-label={isPlaying ? "Pause" : "Play"}
+          sx={{
+            backgroundColor: "#e5e7eb", // gray-200
+            "&:hover": { backgroundColor: "#d1d5db" }, // gray-300
+            padding: "8px",
+          }}
         >
-          {isPlaying ? (
-            <div className="flex space-x-1">
-              <div className="w-1 h-4 bg-gray-700"></div>
-              <div className="w-1 h-4 bg-gray-700"></div>
-            </div>
-          ) : (
-            <div className="w-0 h-0 border-t-5 border-b-5 border-l-8 border-transparent border-l-gray-700 ml-0.5"></div>
-          )}
-        </button>
+          {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
+        </IconButton>
 
-        <button
-          className="p-2 bg-gray-200 rounded-full hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors flex items-center justify-center relative w-8 h-8"
+        <IconButton
           onClick={skipForward}
           aria-label="Skip forward"
+          sx={{
+            backgroundColor: "#e5e7eb", // gray-200
+            "&:hover": { backgroundColor: "#d1d5db" }, // gray-300
+            padding: "8px",
+          }}
         >
-          <div className="w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-gray-700 transform translate-x-1"></div>
-          <div className="absolute left-1/2 top-1/2 transform -translate-y-1/2 h-8 w-px bg-gray-700"></div>
-        </button>
-      </div>
-    </div>
+          <SkipNextIcon />
+        </IconButton>
+      </Box>
+    </Box>
   );
 };
 
-export default AudioPlayer;
+export default TimeSlider;
