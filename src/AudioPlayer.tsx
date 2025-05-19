@@ -9,13 +9,15 @@ import SkipNextIcon from "@mui/icons-material/SkipNext";
 
 interface TimeSliderProps {
   maxStep: number;
+  onCurrentTime?: (time: number) => void;
 }
+
 // Constants
 const STEP_INTERVAL = 1; // Interval between tick marks on slider
 const MARK_INTERVAL = 5; // Interval between labeled tick marks
 const MS_PER_STEP = 200; // Milliseconds per step (lower = faster animation)
 const SLIDE_STEP = 0.1;
-const TimeSlider: React.FC<TimeSliderProps> = ({ maxStep }) => {
+const TimeSlider: React.FC<TimeSliderProps> = ({ maxStep, onCurrentTime }) => {
   // Ensure maxStep is valid and has a minimum value of 1
   const effectiveMaxStep = Math.max(maxStep || 1, 1);
 
@@ -34,6 +36,13 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ maxStep }) => {
     setDuration(Math.max(maxStep || 1, 1));
     setCurrentTime(0);
   }, [maxStep]);
+  // // Inside the TimeSlider component
+  // useEffect(() => {
+  //   // Call the callback whenever currentTime changes
+  //   if (onCurrentTime) {
+  //     onCurrentTime(currentTime);
+  //   }
+  // }, [currentTime, onCurrentTime]);
 
   // Animation handler for smooth time tracking
   const animate = useCallback(
@@ -222,7 +231,6 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ maxStep }) => {
         >
           {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
         </IconButton>
-
         <IconButton
           onClick={skipForward}
           aria-label="Skip forward"

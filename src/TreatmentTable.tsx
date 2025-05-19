@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AudioPlayer from "./AudioPlayer";
 import helper from "./helper";
+import { simulateTimeProgressionAsync } from "./hooks/useExcess";
 
 type RowData = {
   key: number;
@@ -33,8 +34,9 @@ export default function TreatmentTable() {
       ),
     }))
   );
+  const [currentTime, setCurrentTime] = useState<number>(0);
 
-  console.log("data===", { data, rowIndexes });
+  // console.log("data===", { data, rowIndexes });
 
   const getMaxValue = (header: string): number => {
     if (["Tran E/I", "Tran B/L", "Tran M/D"].includes(header)) return 6;
@@ -81,6 +83,33 @@ export default function TreatmentTable() {
       );
     }
   };
+
+  const handleTimeChange = (time: number) => {
+    setCurrentTime(time);
+  };
+
+  simulateTimeProgressionAsync(100).then(data => console.log("Mô phỏng hoàn tất với", data.length, "mẫu dữ liệu"));
+
+  type DataItem = {
+    key: number;
+    values: string[];
+  };
+  useEffect(() => {
+    const result: DataItem[] = data.map((item) => ({
+      key: item.key,
+      values: item.values.map((value) => {
+        if (value.includes("°")) {
+          const number = parseFloat(value.replace("°", ""));
+          return number / currentTime + "°";
+        } else {
+          const number = parseFloat(value);
+          return (number / currentTime).toString();
+        }
+      }),
+    }));
+
+    // console.log("===", { result, currentTime });
+  }, [currentTime]);
 
   return (
     <div className="overflow-auto max-h-[80vh] p-4 border rounded">
@@ -132,6 +161,7 @@ export default function TreatmentTable() {
             };
           })
         )}
+        onCurrentTime={handleTimeChange}
       />
     </div>
   );
